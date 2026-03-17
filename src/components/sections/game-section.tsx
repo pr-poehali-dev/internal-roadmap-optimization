@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useState, useMemo } from "react"
 import { useReveal } from "@/hooks/use-reveal"
 import { MagneticButton } from "@/components/magnetic-button"
 
@@ -38,10 +38,15 @@ const EXPENSES_CONFIG = [
 ]
 
 type Region = typeof REGIONS[0]
-type GameState = "map" | "expenses" | "result"
+type GameState = "map" | "expenses" | "result" | "leaderboard"
+type SortKey = "balance" | "salary" | "percent"
 
 function formatMoney(amount: number) {
   return amount.toLocaleString("ru-RU") + " ₽"
+}
+
+function getDefaultBalance(region: Region) {
+  return region.salary - region.rent - region.food - region.transport - region.utilities - region.entertainment
 }
 
 export function GameSection() {
@@ -50,10 +55,26 @@ export function GameSection() {
   const [selectedRegion, setSelectedRegion] = useState<Region | null>(null)
   const [expenses, setExpenses] = useState<Record<string, number>>({})
   const [search, setSearch] = useState("")
+  const [sortKey, setSortKey] = useState<SortKey>("balance")
 
   const filteredRegions = REGIONS.filter(r =>
     r.name.toLowerCase().includes(search.toLowerCase())
   )
+
+  const leaderboard = useMemo(() => {
+    return [...REGIONS]
+      .map(r => {
+        const totalExpenses = r.rent + r.food + r.transport + r.utilities + r.entertainment
+        const balance = r.salary - totalExpenses
+        const percent = Math.round((balance / r.salary) * 100)
+        return { ...r, totalExpenses, balance, percent }
+      })
+      .sort((a, b) => {
+        if (sortKey === "balance") return b.balance - a.balance
+        if (sortKey === "salary") return b.salary - a.salary
+        return b.percent - a.percent
+      })
+  }, [sortKey])
 
   const handleRegionClick = (region: Region) => {
     setSelectedRegion(region)
@@ -93,6 +114,20 @@ export function GameSection() {
     return "bg-red-500/20 border-red-500/30 hover:bg-red-500/30"
   }
 
+  const getBalanceColor = (balance: number) => {
+    if (balance >= 15000) return "text-emerald-400"
+    if (balance >= 5000) return "text-yellow-400"
+    if (balance >= 0) return "text-orange-400"
+    return "text-red-400"
+  }
+
+  const getMedal = (index: number) => {
+    if (index === 0) return "🥇"
+    if (index === 1) return "🥈"
+    if (index === 2) return "🥉"
+    return `${index + 1}`
+  }
+
   return (
     <section
       ref={ref}
@@ -103,11 +138,19 @@ export function GameSection() {
         {/* MAP STATE */}
         {gameState === "map" && (
           <div className={`transition-all duration-700 ${isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"}`}>
-            <div className="mb-6 md:mb-8">
-              <h2 className="mb-1 font-sans text-4xl font-light tracking-tight text-foreground md:text-6xl">
-                Симулятор жизни
-              </h2>
-              <p className="font-mono text-sm text-foreground/60">/ Выберите регион и узнайте, хватит ли зарплаты</p>
+            <div className="mb-5 flex items-end justify-between gap-4 flex-wrap">
+              <div>
+                <h2 className="mb-1 font-sans text-4xl font-light tracking-tight text-foreground md:text-6xl">
+                  Симулятор жизни
+                </h2>
+                <p className="font-mono text-sm text-foreground/60">/ Выберите регион и узнайте, хватит ли зарплаты</p>
+              </div>
+              <button
+                onClick={() => setGameState("leaderboard")}
+                className="font-mono text-xs text-foreground/50 hover:text-foreground/90 border border-foreground/20 hover:border-foreground/40 rounded-lg px-4 py-2 transition-all whitespace-nowrap"
+              >
+                🏆 Таблица лидеров
+              </button>
             </div>
 
             <div className="mb-4">
@@ -120,7 +163,7 @@ export function GameSection() {
               />
             </div>
 
-            <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 overflow-y-auto max-h-[50vh]"
+            <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 overflow-y-auto max-h-[45vh]"
               style={{ scrollbarWidth: "none" }}>
               {filteredRegions.map((region, i) => (
                 <button
@@ -133,15 +176,102 @@ export function GameSection() {
                     {formatMoney(region.salary)}
                   </div>
                   <div className="text-foreground/90 text-xs leading-tight font-sans">{region.name}</div>
+                  <div className={`font-mono text-xs mt-1 ${getBalanceColor(getDefaultBalance(region))}`}>
+                    {getDefaultBalance(region) >= 0 ? "+" : ""}{Math.round(getDefaultBalance(region) / 1000)}к
+                  </div>
                 </button>
               ))}
             </div>
 
-            <div className="mt-4 flex gap-4 text-xs font-mono text-foreground/50">
+            <div className="mt-4 flex gap-4 text-xs font-mono text-foreground/50 flex-wrap">
               <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-400 inline-block" /> от 70 000 ₽</span>
               <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-yellow-400 inline-block" /> от 50 000 ₽</span>
               <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-orange-400 inline-block" /> от 40 000 ₽</span>
               <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-400 inline-block" /> до 40 000 ₽</span>
+            </div>
+          </div>
+        )}
+
+        {/* LEADERBOARD STATE */}
+        {gameState === "leaderboard" && (
+          <div className={`transition-all duration-700 ${isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"}`}>
+            <div className="mb-5 flex items-end justify-between gap-4 flex-wrap">
+              <div>
+                <button onClick={handleReset} className="mb-2 font-mono text-xs text-foreground/50 hover:text-foreground/80 transition-colors">
+                  ← Назад к карте
+                </button>
+                <h2 className="mb-1 font-sans text-4xl font-light tracking-tight text-foreground md:text-5xl">
+                  🏆 Таблица лидеров
+                </h2>
+                <p className="font-mono text-sm text-foreground/60">/ Где жить выгоднее всего</p>
+              </div>
+              <div className="flex gap-2">
+                {(["balance", "salary", "percent"] as SortKey[]).map(key => (
+                  <button
+                    key={key}
+                    onClick={() => setSortKey(key)}
+                    className={`font-mono text-xs px-3 py-1.5 rounded-lg border transition-all ${
+                      sortKey === key
+                        ? "border-foreground/60 bg-foreground/15 text-foreground"
+                        : "border-foreground/20 text-foreground/50 hover:border-foreground/40 hover:text-foreground/80"
+                    }`}
+                  >
+                    {key === "balance" ? "Остаток" : key === "salary" ? "Зарплата" : "% свободных"}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="overflow-y-auto max-h-[55vh]" style={{ scrollbarWidth: "none" }}>
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-foreground/10">
+                    <th className="font-mono text-xs text-foreground/40 text-left pb-3 w-8">#</th>
+                    <th className="font-mono text-xs text-foreground/40 text-left pb-3">Регион</th>
+                    <th className="font-mono text-xs text-foreground/40 text-right pb-3 hidden sm:table-cell">Зарплата</th>
+                    <th className="font-mono text-xs text-foreground/40 text-right pb-3 hidden md:table-cell">Расходы</th>
+                    <th className="font-mono text-xs text-foreground/40 text-right pb-3">Остаток</th>
+                    <th className="font-mono text-xs text-foreground/40 text-right pb-3 hidden sm:table-cell">% свободных</th>
+                    <th className="pb-3 w-8" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {leaderboard.map((region, i) => (
+                    <tr
+                      key={region.id}
+                      className="border-b border-foreground/5 hover:bg-foreground/5 transition-colors cursor-pointer group"
+                      onClick={() => handleRegionClick(region)}
+                      style={{ animationDelay: `${i * 30}ms` }}
+                    >
+                      <td className="py-3 pr-3 font-mono text-sm text-foreground/40">
+                        {getMedal(i)}
+                      </td>
+                      <td className="py-3 font-sans text-sm text-foreground group-hover:text-foreground/90">
+                        {region.name}
+                      </td>
+                      <td className="py-3 font-mono text-sm text-right hidden sm:table-cell">
+                        <span className={getSalaryColor(region.salary)}>{formatMoney(region.salary)}</span>
+                      </td>
+                      <td className="py-3 font-mono text-sm text-foreground/50 text-right hidden md:table-cell">
+                        {formatMoney(region.totalExpenses)}
+                      </td>
+                      <td className="py-3 font-mono text-sm text-right">
+                        <span className={getBalanceColor(region.balance)}>
+                          {region.balance >= 0 ? "+" : ""}{formatMoney(region.balance)}
+                        </span>
+                      </td>
+                      <td className="py-3 font-mono text-sm text-right hidden sm:table-cell">
+                        <span className={getBalanceColor(region.balance)}>
+                          {region.percent > 0 ? region.percent : 0}%
+                        </span>
+                      </td>
+                      <td className="py-3 pl-3 text-foreground/20 group-hover:text-foreground/50 text-xs font-mono">
+                        →
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           </div>
         )}
@@ -163,13 +293,11 @@ export function GameSection() {
             <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3 mb-6">
               {EXPENSES_CONFIG.map(({ key, label, emoji, description }) => (
                 <div key={key} className="border border-foreground/15 rounded-xl p-4 bg-foreground/5">
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-2">
-                      <span className="text-lg">{emoji}</span>
-                      <div>
-                        <div className="font-sans text-sm text-foreground">{label}</div>
-                        <div className="font-mono text-xs text-foreground/40">{description}</div>
-                      </div>
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-lg">{emoji}</span>
+                    <div>
+                      <div className="font-sans text-sm text-foreground">{label}</div>
+                      <div className="font-mono text-xs text-foreground/40">{description}</div>
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
@@ -238,8 +366,11 @@ export function GameSection() {
               <MagneticButton variant="primary" size="lg" onClick={() => setGameState("expenses")}>
                 Изменить расходы
               </MagneticButton>
+              <MagneticButton variant="secondary" size="lg" onClick={() => setGameState("leaderboard")}>
+                🏆 Таблица лидеров
+              </MagneticButton>
               <MagneticButton variant="secondary" size="lg" onClick={handleReset}>
-                Выбрать другой регион
+                Другой регион
               </MagneticButton>
             </div>
           </div>
